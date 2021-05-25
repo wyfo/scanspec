@@ -7,7 +7,17 @@ import graphql
 from aiohttp import web
 from apischema.graphql import graphql_schema, resolver
 from graphql_server.aiohttp.graphqlview import GraphQLView, _asyncify
-from numpy import array2string, dtype, float64, frombuffer, ndarray
+from numpy import (
+    absolute,
+    amin,
+    array2string,
+    dtype,
+    float64,
+    frombuffer,
+    ndarray,
+    power,
+    sqrt,
+)
 
 from scanspec.core import Path
 from scanspec.specs import Spec
@@ -17,39 +27,30 @@ from scanspec.specs import Spec
 class Points:
     """ A collection of singular or multidimensional locations in scan space"""
 
-    def __init__(self, points: Optional[ndarray]):
+    def __init__(self, points: ndarray):
         self._points = points
 
     @resolver
-    def string(self) -> Optional[str]:
+    def string(self) -> str:
         return array2string(self._points)
 
     @resolver
-    def float_list(self) -> Optional[List[float]]:
-        if self._points is None:
-            return None
-        else:
-            return self._points.tolist()
+    def float_list(self) -> List[float]:
+        return self._points.tolist()
 
     @resolver
-    def b64(self) -> Optional[str]:
-        if self._points is None:
-            return None
-        else:
-            # make sure the data is sent as float64
-            assert dtype(self._points[0]) == dtype(float64)
-            return base64.b64encode(self._points.tobytes()).decode("utf-8")
+    def b64(self) -> str:
+        # make sure the data is sent as float64
+        assert dtype(self._points[0]) == dtype(float64)
+        return base64.b64encode(self._points.tobytes()).decode("utf-8")
 
     # Self b64 decoder for testing purposes
     @resolver
-    def b64Decode(self) -> Optional[str]:
-        if self._points is None:
-            return None
-        else:
-            r = dtype(self._points[0])
-            s = base64.decodebytes(base64.b64encode(self._points.tobytes()))
-            t = frombuffer(s, dtype=r)
-            return array2string(t)
+    def b64Decode(self) -> str:
+        r = dtype(self._points[0])
+        s = base64.decodebytes(base64.b64encode(self._points.tobytes()))
+        t = frombuffer(s, dtype=r)
+        return array2string(t)
 
 
 @dataclass
@@ -62,11 +63,11 @@ class AxisFrames:
     """A fixed reference that can be scanned. i.e. a motor, time or
     number of repetitions.
     """
-    lower: Optional[Points]
+    lower: Points
     """The lower bounds of each midpoint (used when fly scanning)"""
-    midpoints: Optional[Points]
+    midpoints: Points
     """The centre points of the scan"""
-    upper: Optional[Points]
+    upper: Points
     """The upper bounds of each midpoint (used when fly scanning)"""
 
 
@@ -79,6 +80,9 @@ class PointsResponse:
     axes: List[AxisFrames]
     total_frames: int
     returned_frames: int
+    smallest_x_step: float
+    smallest_y_step: float
+    smallest_abs_step: float
 
 
 # Chacks that the spec will produce a valid scan
@@ -107,7 +111,7 @@ def get_points(spec: Spec, max_frames: Optional[int] = 200000) -> PointsResponse
     total_frames = len(path)  # Capture the total length of the path
 
     # Limit the consumed data to the max_frames argument
-    # # WARNING: path object is consumed after this statement
+    # WARNING: path object is consumed after this statement
     if max_frames is None:
         # Return as many frames as possible
         returned_frames = len(path)
@@ -127,14 +131,42 @@ def get_points(spec: Spec, max_frames: Optional[int] = 200000) -> PointsResponse
     scan_points = [
         AxisFrames(
             axis,
-            Points(chunk.lower.get(axis)),
-            Points(chunk.midpoints.get(axis)),
-            Points(chunk.upper.get(axis)),
+            Points(chunk.lower[axis]),
+            Points(chunk.midpoints[axis]),
+            Points(chunk.upper[axis]),
         )
         for axis in spec.axes()
     ]
 
-    return PointsResponse(scan_points, total_frames, returned_frames)
+    smallest_x_step = float(amin(abs_diffs(chunk.midpoints[spec.axes()[0]])))
+    smallest_y_step = float(amin(abs_diffs(chunk.midpoints[spec.axes()[1]])))
+    smallest_abs_step = float(
+        amin(
+            abs_diffs_2d(
+                abs_diffs(chunk.midpoints[spec.axes()[0]]),
+                abs_diffs(chunk.midpoints[spec.axes()[1]]),
+            )
+        )
+    )
+
+    return PointsResponse(
+        scan_points,
+        total_frames,
+        returned_frames,
+        smallest_x_step,
+        smallest_y_step,
+        smallest_abs_step,
+    )
+
+
+def abs_diffs(array: ndarray) -> ndarray:
+    # [array[1] - array[0], array[2] - array[1], ...]
+    adjacent_diffs = array[1:] - array[:-1]
+    return absolute(adjacent_diffs)
+
+
+def abs_diffs_2d(x_diffs: ndarray, y_diffs: ndarray) -> ndarray:
+    return sqrt(power(x_diffs, 2) + power(y_diffs, 2))
 
 
 # Define the schema
