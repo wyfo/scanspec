@@ -82,7 +82,9 @@ class SmallestStep:
 
     @resolver
     def absolute(self) -> float:
-        return amin(linalg.norm(self._points, axis=0))
+        # Calc abs diffs of all axes and output as an array of differences
+        absolute_diffs = [abs_diffs(axis_midpoints) for axis_midpoints in self._points]
+        return amin(linalg.norm(absolute_diffs, axis=0))
 
 
 @dataclass
