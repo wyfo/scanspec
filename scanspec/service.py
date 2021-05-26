@@ -14,9 +14,8 @@ from numpy import (
     dtype,
     float64,
     frombuffer,
+    linalg,
     ndarray,
-    power,
-    sqrt,
 )
 
 from scanspec.core import Path
@@ -66,9 +65,24 @@ class AxisFrames:
     lower: Points
     """The lower bounds of each midpoint (used when fly scanning)"""
     midpoints: Points
-    """The centre points of the scan"""
+    """The middle points of the scan"""
     upper: Points
     """The upper bounds of each midpoint (used when fly scanning)"""
+    smallest_step: float
+    """The smallest step between midpoints in this axis"""
+
+
+@dataclass
+class SmallestStep:
+    """ The smallest distance between midpoints in a multidimensional scan space"""
+
+    def __init__(self, points: List[ndarray]):
+        # points is an mxn array where n is the number of axes present in the scan
+        self._points = points
+
+    @resolver
+    def absolute(self) -> float:
+        return amin(linalg.norm(self._points, axis=0))
 
 
 @dataclass
@@ -78,14 +92,17 @@ class PointsResponse:
     """
 
     axes: List[AxisFrames]
+    """A list of all of the points present in the spec per axis"""
     total_frames: int
+    """The number of frames present across the entire spec"""
     returned_frames: int
-    smallest_x_step: float
-    smallest_y_step: float
-    smallest_abs_step: float
+    """The number of frames returned by the getPoints query
+    (controlled by the max_points argument)"""
+    smallest_abs_step: SmallestStep
+    """The smallest step between midpoints across all axes in the scan"""
 
 
-# Chacks that the spec will produce a valid scan
+# Checks that the spec will produce a valid scan
 def validate_spec(spec: Spec) -> Any:
     """ A query used to confirm whether or not the Spec will produce a viable scan"""
     # apischema will do all the validation for us
@@ -108,9 +125,12 @@ def get_points(spec: Spec, max_frames: Optional[int] = 200000) -> PointsResponse
     """
     dims = spec.create_dimensions()  # Grab dimensions from spec
     path = Path(dims)  # Convert to a path
+
+    # TOTAL FRAMES
     total_frames = len(path)  # Capture the total length of the path
 
-    # Limit the consumed data to the max_frames argument
+    # MAX FRAMES | RETURNED FRAMES
+    # Limit the consumed data by the max_frames argument
     # WARNING: path object is consumed after this statement
     if max_frames is None:
         # Return as many frames as possible
@@ -134,39 +154,32 @@ def get_points(spec: Spec, max_frames: Optional[int] = 200000) -> PointsResponse
             Points(chunk.lower[axis]),
             Points(chunk.midpoints[axis]),
             Points(chunk.upper[axis]),
+            float(amin(abs_diffs(chunk.midpoints[axis]))),
         )
         for axis in spec.axes()
     ]
 
-    smallest_x_step = float(amin(abs_diffs(chunk.midpoints[spec.axes()[0]])))
-    smallest_y_step = float(amin(abs_diffs(chunk.midpoints[spec.axes()[1]])))
-    smallest_abs_step = float(
-        amin(
-            abs_diffs_2d(
-                abs_diffs(chunk.midpoints[spec.axes()[0]]),
-                abs_diffs(chunk.midpoints[spec.axes()[1]]),
-            )
-        )
-    )
+    # ABSOLUTE SMALLEST STEP
+    smallest_abs_step = SmallestStep(list(chunk.midpoints.values()))
 
     return PointsResponse(
-        scan_points,
-        total_frames,
-        returned_frames,
-        smallest_x_step,
-        smallest_y_step,
-        smallest_abs_step,
+        scan_points, total_frames, returned_frames, smallest_abs_step,
     )
 
 
 def abs_diffs(array: ndarray) -> ndarray:
+    """Calculates the absolute differences between adjacent elements in the array
+       used as part of the smallest step calculation for each axis
+
+    Args:
+        array (ndarray): A 1xN array of numerical values
+
+    Returns:
+        ndarray: A newly constucted array of absolute differences
+    """
     # [array[1] - array[0], array[2] - array[1], ...]
     adjacent_diffs = array[1:] - array[:-1]
     return absolute(adjacent_diffs)
-
-
-def abs_diffs_2d(x_diffs: ndarray, y_diffs: ndarray) -> ndarray:
-    return sqrt(power(x_diffs, 2) + power(y_diffs, 2))
 
 
 # Define the schema
