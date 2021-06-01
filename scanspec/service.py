@@ -82,8 +82,9 @@ class SmallestStep:
 
     @resolver
     def absolute(self) -> float:
-        # Calc abs diffs of all axes and output as an array of differences
+        # Calc abs diffs of all axes
         absolute_diffs = [abs_diffs(axis_midpoints) for axis_midpoints in self._points]
+        # Return the smallest value (Aka. smallest step)
         return amin(linalg.norm(absolute_diffs, axis=0))
 
 
@@ -113,7 +114,7 @@ def validate_spec(spec: Spec) -> Any:
 
 # Returns a full list of points for each axis in the scan
 # TODO Update max_frames with a more sophisticated method of reducing scan points
-def get_points(spec: Spec, max_frames: Optional[int] = 200000) -> PointsResponse:
+def get_points(spec: Spec, max_frames: Optional[int] = 100000) -> PointsResponse:
     """A query that takes a Spec and calculates the points present in the scan
     (for each axis) plus some metadata about the points.
 
