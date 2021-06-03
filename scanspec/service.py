@@ -7,9 +7,9 @@ import graphql
 from aiohttp import web
 from apischema.graphql import graphql_schema, resolver
 from graphql_server.aiohttp.graphqlview import GraphQLView, _asyncify
-from numpy import array2string, dtype, float64, frombuffer, ndarray
+from numpy import array2string, dtype, float64, frombuffer, ndarray, power
 
-from scanspec.core import Path
+from scanspec.core import Dimension, Path
 from scanspec.specs import Spec
 
 
@@ -121,7 +121,8 @@ def get_points(spec: Spec, max_frames: Optional[int] = 200000) -> PointsResponse
     else:
         # Cap the frames by the max limit
         returned_frames = max_frames
-        chunk = path.consume(max_frames)
+        path = reduce_frames(dims, max_frames)
+        chunk = path.consume()
 
     # POINTS
     scan_points = [
@@ -139,6 +140,20 @@ def get_points(spec: Spec, max_frames: Optional[int] = 200000) -> PointsResponse
 
 # Define the schema
 schema = graphql_schema(query=[validate_spec, get_points])
+
+
+def reduce_frames(dims: List[Dimension], max_frames: int) -> Path:
+    # Make more flexible to multiple dimensions
+    num_frames = len(dims[0]) * len(dims[1])
+    # Calculate the ratio of frames that must be kept to reach max_frames
+    ratio = power(max_frames / num_frames, 1 / len(dims))
+    # sub_sample takes d where len(d)=x and returns d2 where len(d2)=int(len(d)/ratio)
+    sub_dims = [sub_sample(d, 1 / ratio) for d in dims]
+    return Path(sub_dims)
+
+
+def sub_sample(dim: Dimension, step_size: float) -> Dimension:
+    return dim[0 : len(dim) : step_size]
 
 
 def schema_text() -> str:
