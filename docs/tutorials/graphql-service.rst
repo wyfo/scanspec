@@ -85,18 +85,20 @@ allowing them to obtain data that is relevant only to their application.
 The 'getPoints' query makes use of this, giving users the ability to select from
 one or more of the following fields:
 
-- numFrames: the total number of frames produced by the Spec
-- returnedFrames (WIP): the number of frames returned, limited by the maxPoint argument
 - axes: a list of axes present in the Spec and its associated scan points
+- total_frames: the total number of frames produced by the Spec
+- returned_frames (WIP): the number of frames returned, limited by the maxPoint argument
+- smallest_abs_step: the smallest step between midpoints across ALL axes in the scan
 
-#### Within axes:
+Within axes:
 
 - axis: the name of the axis present in the Spec
 - lower: a list of lower bounds that are each present in a frame
 - midpoints: a list of midpoints that are each present in a frame
 - upper: a list of upper bounds that are each present in a frame
+- smallest-step: the smallest step between midpoints in this axis of the scan
 
-#### Within lower, middle and upper:
+Within lower, middle and upper:
 
 - string: returns the requested points as a human readable numpy formatted string
 - floatList: returns the requested points as a list of floats

@@ -1,8 +1,5 @@
 .. _technical-terms:
 
-.. autoclass:: scanspec.service.Points
-.. autoclass:: scanspec.service.AxisFrames
-
 technical terms
 ===============
 
@@ -12,7 +9,7 @@ i.e. a motor, time or number of repetitions.
 `Dimension <scanspec.core.Dimension>`: A repeatable, possibly snaking 
 structure of frames along a number of axes.
 
-`Frame <scanspec.core.Dimension>`: A vector of three points in scan space: 
+`Frame <scanspec.service.AxisFrames>`: A vector of three points in scan space: 
 lower, midpoint, upper (used for fly scanning).
 
 `Path <scanspec.core.Path>`: A consumable route through one or more 
