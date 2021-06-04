@@ -1,5 +1,6 @@
 import base64
 from dataclasses import dataclass
+import re
 from typing import Any, List, Optional
 
 import aiohttp_cors
@@ -7,7 +8,7 @@ import graphql
 from aiohttp import web
 from apischema.graphql import graphql_schema, resolver
 from graphql_server.aiohttp.graphqlview import GraphQLView, _asyncify
-from numpy import array2string, dtype, float64, frombuffer, ndarray, power
+from numpy import array2string, dtype, float64, frombuffer, ndarray, power, asarray
 
 from scanspec.core import Dimension, Path
 from scanspec.specs import Spec
@@ -120,8 +121,8 @@ def get_points(spec: Spec, max_frames: Optional[int] = 200000) -> PointsResponse
 
     else:
         # Cap the frames by the max limit
-        returned_frames = max_frames
         path = reduce_frames(dims, max_frames)
+        returned_frames = len(path)
         chunk = path.consume()
 
     # POINTS
@@ -143,7 +144,17 @@ schema = graphql_schema(query=[validate_spec, get_points])
 
 
 def reduce_frames(dims: List[Dimension], max_frames: int) -> Path:
-    # Make more flexible to multiple dimensions
+    """Removes frames from a spec such that it produces a number that is
+    closest to the max points value
+
+    Args:
+        dims (List[Dimension]): A dimension object created by a spec
+        max_frames (int): The maximum number of frames the user wishes to be returned
+
+    Returns:
+        Path: A consumable object containing the expanded dimension with reduced frames
+    """
+    # TODO: Make more flexible to multiple dimensions
     num_frames = len(dims[0]) * len(dims[1])
     # Calculate the ratio of frames that must be kept to reach max_frames
     ratio = power(max_frames / num_frames, 1 / len(dims))
@@ -153,7 +164,42 @@ def reduce_frames(dims: List[Dimension], max_frames: int) -> Path:
 
 
 def sub_sample(dim: Dimension, step_size: float) -> Dimension:
-    return dim[0 : len(dim) : step_size]
+    """Removes frames from a dimension array whilst preserving its core structure
+
+    Args:
+        dim (Dimension): the dimension object to be reduced
+        step_size (float): 1/reduction_ratio
+
+    Returns:
+        Dimension: the reduced dimension
+    """
+    reduced_frames = []
+    i = step_size
+
+    # Compute a an array of reduced indexes to be extracted from the dimension object
+    while i < len(dim):
+        d = int(i)
+        reduced_frames.append(d)
+        i = i + step_size
+
+    # This ensures that the first value of the dimension arrays are always kept
+    reduced_index = list(asarray(reduced_frames) - 1)
+
+    # Get the axis name of the dimension
+    axis = list(dim.midpoints)[0]
+
+    # If all of the dimensions are equal, they can be reduced by sampling from a single
+    # dimension array
+    if dim.lower[axis].all == dim.midpoints[axis].all == dim.upper[axis].all:
+        dim.lower[axis] = dim.lower[axis][reduced_index]
+
+    # Reduce the lower, midpoint and upper dimension arrays
+    else:
+        dim.lower[axis] = dim.lower[axis][reduced_index]
+        dim.midpoints[axis] = dim.midpoints[axis][reduced_index]
+        dim.upper[axis] = dim.upper[axis][reduced_index]
+
+    return dim
 
 
 def schema_text() -> str:
