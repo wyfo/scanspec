@@ -1,6 +1,5 @@
 import base64
 from dataclasses import dataclass
-import re
 from typing import Any, List, Optional
 
 import aiohttp_cors
@@ -8,7 +7,7 @@ import graphql
 from aiohttp import web
 from apischema.graphql import graphql_schema, resolver
 from graphql_server.aiohttp.graphqlview import GraphQLView, _asyncify
-from numpy import array2string, dtype, float64, frombuffer, ndarray, power, asarray
+from numpy import array2string, asarray, dtype, float64, frombuffer, ndarray, power
 
 from scanspec.core import Dimension, Path
 from scanspec.specs import Spec
@@ -154,17 +153,21 @@ def reduce_frames(dims: List[Dimension], max_frames: int) -> Path:
     Returns:
         Path: A consumable object containing the expanded dimension with reduced frames
     """
-    # TODO: Make more flexible to multiple dimensions
-    num_frames = len(dims[0]) * len(dims[1])
+    # Calculate the total number of frames
+    num_frames = 1
+    for dim in range(len(dims)):
+        num_frames *= len(dims[dim])
+
     # Calculate the ratio of frames that must be kept to reach max_frames
     ratio = power(max_frames / num_frames, 1 / len(dims))
+
     # sub_sample takes d where len(d)=x and returns d2 where len(d2)=int(len(d)/ratio)
     sub_dims = [sub_sample(d, 1 / ratio) for d in dims]
     return Path(sub_dims)
 
 
 def sub_sample(dim: Dimension, step_size: float) -> Dimension:
-    """Removes frames from a dimension array whilst preserving its core structure
+    """Removes frames from a dimension whilst preserving its core structure
 
     Args:
         dim (Dimension): the dimension object to be reduced
